@@ -11,8 +11,8 @@ export const supabase = cloudEnabled ? createClient(url, anonKey, { auth: { pers
 const BUCKET = 'garments';
 const redirectTo = () => window.location.origin + window.location.pathname;
 
-export async function signUp(email, password) {
-  const { data, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo() } });
+export async function signUp(email, password, profile = {}) {
+  const { data, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo(), data: profile } });
   if (error) throw error;
   return { needsConfirmation: !data.session };
 }
@@ -24,6 +24,9 @@ export async function signOut() { await supabase.auth.signOut(); }
 export async function sendPasswordReset(email) {
   const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: redirectTo() });
   if (error) throw error;
+}
+export async function saveAccountProfile(profile) {
+  try { await supabase.auth.updateUser({ data: profile }); } catch { /* best effort */ }
 }
 export async function setNewPassword(password) {
   const { error } = await supabase.auth.updateUser({ password });

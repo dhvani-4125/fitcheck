@@ -1,16 +1,20 @@
 import React, { useState } from 'react';
 import { signIn, signUp, signOut, sendPasswordReset, setNewPassword } from '../lib/cloud.js';
+import { GENDERS, STYLE_FOR, defaultStyleFor } from './Onboarding.jsx';
 
 const STATUS_COPY = { synced: 'Synced', syncing: 'Syncing…', error: 'Sync problem', 'signed-out': 'Not signed in', off: 'Offline only' };
 
 // Sign in / create account / sign out, plus sync status. Used in Profile and from onboarding.
-export default function AccountPanel({ sync, notify, compact = false, onSignedIn }) {
+export default function AccountPanel({ sync, notify, compact = false, onSignedIn, profile }) {
   const [mode, setMode] = useState('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [newPw, setNewPw] = useState('');
+  const [gender, setGender] = useState(profile?.gender || null);
+  const [styleFor, setStyleFor] = useState(profile?.styleFor || null);
+  const [name, setName] = useState(profile?.name || '');
 
   if (!sync.enabled) {
     return (
@@ -54,7 +58,8 @@ export default function AccountPanel({ sync, notify, compact = false, onSignedIn
     try {
       if (mode === 'reset') { await sendPasswordReset(email); notify('Check your email for a reset link.'); setMode('signin'); }
       else if (mode === 'signup') {
-        const { needsConfirmation } = await signUp(email, password);
+        if (!gender) { setError('Please choose how you identify. It sets up your profile.'); setBusy(false); return; }
+        const { needsConfirmation } = await signUp(email, password, { gender, styleFor: styleFor || defaultStyleFor(gender), name: name.trim() });
         notify(needsConfirmation ? 'Check your email to confirm your account, then sign in.' : 'Account created. Syncing your wardrobe…');
         if (!needsConfirmation) onSignedIn?.();
         if (needsConfirmation) setMode('signin');
@@ -70,6 +75,15 @@ export default function AccountPanel({ sync, notify, compact = false, onSignedIn
         <button type="button" role="tab" aria-selected={mode === 'signup'} className={mode === 'signup' ? 'on' : ''} onClick={() => setMode('signup')}>Create account</button>
       </div>
       <label className="fc-field">Email<input type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" /></label>
+      {mode === 'signup' && (
+        <>
+          <p className="fx-label">How do you identify?</p>
+          <div className="fx-chips small">{GENDERS.map(g => <button type="button" key={g} className={gender === g ? 'on' : ''} onClick={() => { setGender(g); setStyleFor(defaultStyleFor(g)); }}>{g}</button>)}</div>
+          <p className="fx-label">Clothes to style</p>
+          <div className="fx-chips small">{STYLE_FOR.map(s => <button type="button" key={s.id} className={styleFor === s.id ? 'on' : ''} onClick={() => setStyleFor(s.id)}>{s.label}</button>)}</div>
+          <label className="fc-field">Name <span className="fx-optional">(optional)</span><input value={name} onChange={e => setName(e.target.value)} autoComplete="given-name" /></label>
+        </>
+      )}
       {mode !== 'reset' && (
         <label className="fc-field">Password<input type="password" required minLength={6} value={password} onChange={e => setPassword(e.target.value)} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} /></label>
       )}

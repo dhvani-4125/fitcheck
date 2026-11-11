@@ -1,5 +1,6 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { analyzePhoto } from '../ai/vision.js';
+import { embedImage, classifyEmbedding, findSimilar, loadMemory, onClipStatus } from '../ai/clip.js';
 import { SLOTS, SLOT_LABELS, SUBCATEGORIES, PATTERNS, SLOT_GROUPS } from '../ai/attributes.js';
 import { NAMED_COLORS, hexForName } from '../ai/colors.js';
 import { PageHeading, Swatches } from './shared.jsx';
@@ -18,6 +19,30 @@ export default function UploadStudio({ items, onSave, notify, audience }) {
   const [drafts, setDrafts] = useState([]);   // editable detections
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [ai, setAi] = useState({ status: 'idle', progress: 0 });
+  const memory = useRef([]);
+  useEffect(() => { loadMemory().then(m => { memory.current = m; }); return onClipStatus((status, info) => setAi(a => ({ ...a, status, ...info }))); }, []);
+
+  // Run FashionCLIP on each detected piece; never overwrite what the user already changed.
+  const recognise = async (fresh) => {
+    for (const d of fresh) {
+      try {
+        const e = await embedImage(d.dataUrl);
+        const r = classifyEmbedding(e, memory.current);
+        const twin = findSimilar(e, memory.current.filter(m => items.some(i => i.id === m.id)));
+        setDrafts(ds => ds.map(x => {
+          if (x.key !== d.key) return x;
+          const next = { ...x, emb: e, aiAlternatives: r.alternatives, reason: r.reason, confidence: r.confidence };
+          if (!x.touched?.slot) { next.slot = r.slot; next.subcategory = r.subcategory; }
+          if (!x.touched?.pattern && r.pattern) next.pattern = r.pattern;
+          if (!x.touched?.name) next.name = defaultName(next);
+          if (!x.duplicateOf && twin) { const it = items.find(i => i.id === twin.id); next.duplicateOf = { id: twin.id, name: it?.name || 'a saved piece', distance: 0 }; next.include = false; }
+          if (!x.touched?.collection) next.collection = next.slot === 'dress' && !['Lehenga', 'Saree', 'Sherwani', 'Anarkali', 'Kurta set', 'Sharara set'].includes(next.subcategory) ? 'Glam / Party' : ['Lehenga', 'Saree', 'Sherwani'].includes(next.subcategory) ? 'The Event Edit' : next.aesthetics?.includes?.('Sporty') ? 'Athleisure' : x.collection;
+          return next;
+        }));
+      } catch { /* model unavailable (offline): keep the shape-based guess */ }
+    }
+  };
 
   const process = async (fileList) => {
     const files = [...fileList].filter(f => f.type.startsWith('image/'));
@@ -40,6 +65,7 @@ export default function UploadStudio({ items, onSave, notify, audience }) {
           price: '',
         }));
         setDrafts(prev => [...prev, ...fresh]);
+        recognise(fresh);
         setBatches(b => b.map(x => x.id === id ? {
           ...x,
           status: res.detections.length > 1 ? `${res.detections.length} pieces separated` : res.busyBackdrop ? '1 piece (busy background, kept whole)' : '1 piece found',
@@ -51,7 +77,7 @@ export default function UploadStudio({ items, onSave, notify, audience }) {
     setBusy(false);
   };
 
-  const update = (key, patch) => setDrafts(ds => ds.map(d => d.key === key ? { ...d, ...patch } : d));
+  const update = (key, patch) => setDrafts(ds => ds.map(d => d.key === key ? { ...d, ...patch, touched: { ...(d.touched || {}), ...Object.fromEntries(Object.keys(patch).map(k => [k === 'subcategory' ? 'slot' : k, true])) } } : d));
   const setColour = (d, index, name) => {
     const colors = [...(d.colors || [])];
     if (!name) colors.splice(index, 1);
@@ -88,6 +114,14 @@ export default function UploadStudio({ items, onSave, notify, audience }) {
         <span>Select as many photos as you like. For best separation, lay pieces flat on a plain bed sheet, floor or wall with a little space between them.</span>
       </button>
 
+      {ai.status !== 'idle' && (
+        <p className={`fx-ai-status ${ai.status}`}>
+          {ai.status === 'loading' && <>✦ Loading the clothing-recognition AI… {Math.round((ai.progress || 0) * 100)}% <span>(about 87 MB, first time only, then it's saved in your browser)</span></>}
+          {ai.status === 'ready' && <>✦ AI recognition is on. It learns from every category you correct.</>}
+          {ai.status === 'error' && <>AI recognition couldn't load (are you offline?), so categories are a rough guess from shape. Please check them.</>}
+        </p>
+      )}
+
       {batches.length > 0 && (
         <ul className="fx-batch-list">
           {batches.map(b => <li key={b.id} className={b.error ? 'err' : ''}><span>{b.name}</span><strong>{b.error || b.status}</strong></li>)}
@@ -100,7 +134,7 @@ export default function UploadStudio({ items, onSave, notify, audience }) {
             <div>
               <p className="fc-kicker">REVIEW BEFORE SAVING</p>
               <h2>{drafts.length} piece{drafts.length === 1 ? '' : 's'} detected</h2>
-              <p className="fc-muted">The category is a best guess from each item's shape. Check it, then change anything that's wrong.</p>
+              <p className="fc-muted">The AI suggests each category. Correct anything it gets wrong and it will remember for next time.</p>
             </div>
             <div className="fx-review-actions">
               <button className="fc-textbtn" onClick={() => setDrafts(ds => ds.map(d => ({ ...d, include: true })))}>Select all</button>
@@ -114,9 +148,11 @@ export default function UploadStudio({ items, onSave, notify, audience }) {
                 <div className="fx-draft-img">
                   <img src={d.dataUrl} alt={d.name} />
                   <label className="fx-include"><input type="checkbox" checked={d.include} onChange={e => update(d.key, { include: e.target.checked })} /> Keep</label>
-                  <span className="fx-confidence" title={`Guessed from ${d.reason}`}>{Math.round(d.confidence * 100)}% sure</span>
+                  <span className="fx-confidence" title={d.reason}>{d.emb ? '✦ ' : ''}{Math.round(d.confidence * 100)}% sure</span>
                 </div>
                 {d.duplicateOf && <p className="fx-dup">Looks like a duplicate of “{d.duplicateOf.name}”</p>}
+                {!d.emb && ai.status === 'loading' && <p className="fx-ai-pending">✦ AI is still recognising this…</p>}
+                {d.aiAlternatives?.length > 0 && !d.touched?.slot && <p className="fx-ai-alt">Or maybe: {d.aiAlternatives.join(', ')}</p>}
                 <label className="fc-field">Name<input value={d.name} onChange={e => update(d.key, { name: e.target.value })} /></label>
                 <div className="fc-form-grid">
                   <label className="fc-field">Category

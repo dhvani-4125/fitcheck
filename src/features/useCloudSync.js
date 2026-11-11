@@ -15,6 +15,8 @@ export default function useCloudSync({ doc, applyDoc, imageCache, setImageCache,
   const [message, setMessage] = useState('');
   const [lastSynced, setLastSynced] = useState(null);
   const [recovery, setRecovery] = useState(false);
+  const [checking, setChecking] = useState(cloudEnabled); // true until we know whether someone is signed in
+  const [loaded, setLoaded] = useState(false);            // true once the account's wardrobe has been merged in
   const ready = useRef(false);
   const lastPushed = useRef('');
   const docRef = useRef(doc);
@@ -25,7 +27,7 @@ export default function useCloudSync({ doc, applyDoc, imageCache, setImageCache,
 
   useEffect(() => {
     if (!supabase) return undefined;
-    supabase.auth.getSession().then(({ data }) => setUser(data.session?.user || null));
+    supabase.auth.getSession().then(({ data }) => setUser(data.session?.user || null)).finally(() => setChecking(false));
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user || null);
       if (event === 'PASSWORD_RECOVERY') setRecovery(true);
@@ -60,7 +62,8 @@ export default function useCloudSync({ doc, applyDoc, imageCache, setImageCache,
 
   // First sync after sign-in: merge this device with the cloud copy.
   useEffect(() => {
-    if (!user) { ready.current = false; if (cloudEnabled) setStatus('signed-out'); return undefined; }
+    if (!user) { ready.current = false; setLoaded(false); if (cloudEnabled) setStatus('signed-out'); return undefined; }
+    setLoaded(false);
     let cancelled = false;
     (async () => {
       setStatus('syncing'); setMessage('');
@@ -72,9 +75,9 @@ export default function useCloudSync({ doc, applyDoc, imageCache, setImageCache,
         await pushWardrobe(user.id, merged);
         lastPushed.current = comparable(merged);
         ready.current = true;
-        setStatus('synced'); setLastSynced(Date.now());
+        setStatus('synced'); setLastSynced(Date.now()); setLoaded(true);
         syncPhotos(merged.items, user.id);
-      } catch (e) { if (!cancelled) { setStatus('error'); setMessage(e.message); } }
+      } catch (e) { if (!cancelled) { setStatus('error'); setMessage(e.message); setLoaded(true); } }
     })();
     return () => { cancelled = true; };
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -98,5 +101,5 @@ export default function useCloudSync({ doc, applyDoc, imageCache, setImageCache,
 
   const removePhoto = useCallback((path) => { if (user && path) deletePhoto(path); }, [user]);
 
-  return { enabled: cloudEnabled, user, status, message, lastSynced, recovery, clearRecovery: () => setRecovery(false), removePhoto };
+  return { enabled: cloudEnabled, checking, loaded, user, status, message, lastSynced, recovery, clearRecovery: () => setRecovery(false), removePhoto };
 }

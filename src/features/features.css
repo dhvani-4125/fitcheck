@@ -447,3 +447,9 @@
 .fx-feature-strip { grid-template-columns: repeat(3, 1fr) !important; }
 @media (max-width: 1000px) { .fx-planner-grid { grid-template-columns: 1fr; } .fx-feature-strip { grid-template-columns: repeat(2, 1fr) !important; } }
 @media (max-width: 700px) { .fx-pollview-form { grid-template-columns: 1fr; } .fx-feature-strip { grid-template-columns: 1fr !important; } .fx-shop { align-items: flex-start; } }
+
+/* AI recognition status */
+.fx-ai-status { margin: 14px 0 0; padding: 10px 14px; font-size: 11.5px; background: var(--sage-100); color: var(--sage-900); border-left: 3px solid var(--sage-700); }
+.fx-ai-status span { color: var(--fx-muted); }
+.fx-ai-status.error { background: #f6eadb; color: #7a5520; border-color: #b5823b; }
+.fx-ai-pending, .fx-ai-alt { margin: 6px 0 0; font-size: 10px; color: var(--sage-700); }

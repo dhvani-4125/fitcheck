@@ -37,7 +37,7 @@ export default function Profile({ profile, setProfile, prefs, setPrefs, notify, 
           <section className="fx-panel fx-span fx-account-section">
             <p className="fc-kicker">ACCOUNT & SYNC</p>
             <h2>{sync.user ? 'Synced across your devices' : 'Use FitCheck on every device'}</h2>
-            <AccountPanel sync={sync} notify={notify} />
+            <AccountPanel sync={sync} notify={notify} profile={profile} />
           </section>
         )}
         <section className="fx-panel fx-span">

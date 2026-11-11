@@ -6,6 +6,7 @@ import { PLACEHOLDER } from './data/placeholder.js';
 import { enrichItem, GROUP_ORDER, STYLIST_OCCASIONS, OCCASION_BY_ID } from './ai/attributes.js';
 import { emptyPrefs } from './ai/stylist.js';
 import { putImage, deleteImage, loadAllImages, isStoredRef, refFor } from './lib/imageStore.js';
+import { remember, relabel, forget } from './ai/clip.js';
 import UploadStudio from './features/UploadStudio.jsx';
 import Stylist from './features/Stylist.jsx';
 import Profile from './features/Profile.jsx';
@@ -15,6 +16,7 @@ import useWeather from './features/useWeather.js';
 import Onboarding from './features/Onboarding.jsx';
 import useCloudSync from './features/useCloudSync.js';
 import AccountPanel from './features/AccountPanel.jsx';
+import { saveAccountProfile } from './lib/cloud.js';
 import AboutUs from './features/AboutUs.jsx';
 import Occasions from './features/Occasions.jsx';
 import Trips from './features/Trips.jsx';
@@ -111,6 +113,18 @@ function App() {
     setTray(t=>[...t,{id:makeId('opt'),items:[...outfit.items],label:meta.label||[lead?.colors?.[0]?.name,lead?.subcategory].filter(Boolean).join(' ')||'Look',occasion:meta.occasion||null}]);
     notify(`Added to Ask Friends (${tray.length+1}/4).`);
   };
+  useEffect(()=>{
+    const meta=sync.user?.user_metadata||{};
+    if(sync.user && sync.loaded && !profile.registeredAt && meta.gender){
+      setProfile(p=>({...p,gender:meta.gender,styleFor:meta.styleFor||p.styleFor,name:p.name||meta.name||'',registeredAt:new Date().toISOString()}));
+      if(meta.styleFor) setAudience(meta.styleFor);
+    }
+  },[sync.user,sync.loaded,profile.registeredAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(()=>{ // keep gender/name on the account so any device can skip the gender screen
+    const meta=sync.user?.user_metadata||{};
+    if(sync.user && sync.loaded && profile.registeredAt && profile.gender && (meta.gender!==profile.gender || meta.styleFor!==profile.styleFor || (meta.name||'')!==(profile.name||''))) saveAccountProfile({gender:profile.gender,styleFor:profile.styleFor,name:profile.name||''});
+  },[sync.user,sync.loaded,profile.gender,profile.styleFor,profile.name,profile.registeredAt]);
+  const accountLoading = sync.enabled && (sync.checking || (sync.user && !sync.loaded));
   const tombstone = (kind,id) => setDeleted(d=>({...d,[kind]:[...new Set([...(d[kind]||[]),id])].slice(-500)}));
 
   useEffect(()=>{ loadAllImages().then(c=>setImageCache(prev=>({...c,...prev}))); },[]);
@@ -163,11 +177,14 @@ function App() {
       const stored=await putImage(id,d.dataUrl);
       if(stored) setImageCache(c=>({...c,[id]:d.dataUrl}));
       created.push(enrichItem({id,name:d.name.trim()||'Untitled piece',category:d.collection,audience:d.audience,brand:d.brand,slot:d.slot,subcategory:d.subcategory,colors:d.colors,color:(d.colors||[]).map(c=>c.name).join(' / '),pattern:d.pattern,price:d.price===''?null:Number(d.price),image:stored?refFor(id):d.dataUrl,hash:d.hash,type:d.subcategory,uploaded:now(),updatedAt:now()}));
+      if(d.emb) remember(id,{slot:d.slot,sub:d.subcategory,e:d.emb}); // teach the recogniser with the confirmed label
     }
     setItems(prev=>[...created,...prev]);
     notify(`${created.length} piece${created.length===1?'':'s'} added to your wardrobe.`);
   };
   const saveEdit = async (draft,newImage) => {
+    const before=items.find(it=>it.id===draft.id);
+    if(before && (before.slot!==draft.slot || before.subcategory!==draft.subcategory)) relabel(draft.id,draft.slot,draft.subcategory); // learn from the correction
     let image=draft.image, cloudPath=draft.cloudPath;
     if(newImage){ const stored=await putImage(draft.id,newImage); if(stored){ setImageCache(c=>({...c,[draft.id]:newImage})); image=refFor(draft.id);} else image=newImage; cloudPath=null; }
     setItems(prev=>prev.map(it=>it.id===draft.id?enrichItem({...draft,image,cloudPath,updatedAt:now()}):it));
@@ -190,7 +207,7 @@ function App() {
     const target=items.find(it=>it.id===id);
     if(isStoredRef(target?.image)) deleteImage(target.image.slice(4));
     if(target?.cloudPath) sync.removePhoto(target.cloudPath);
-    tombstone('items',id);
+    tombstone('items',id); forget(id);
     setEditingId(null);
     setItems(prev=>prev.filter(it=>it.id!==id));
     setLooks(prev=>prev.map(l=>({...l,items:(Array.isArray(l.items)?l.items:[]).filter(x=>(typeof x==='object'?x.id:x)!==id)})));
@@ -251,8 +268,9 @@ function App() {
     {showItemForm&&<div className="fc-modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setShowItemForm(false)}}><form className="fc-modal" onSubmit={saveItem}><div className="fc-modal-head"><div><p className="fc-kicker">YOUR PERSONAL INDEX</p><h2>Add a <em>piece.</em></h2></div><button type="button" className="fc-close" onClick={()=>setShowItemForm(false)}>×</button></div><label className="fc-field">Piece name<input required value={newItem.name} onChange={e=>setNewItem({...newItem,name:e.target.value})} placeholder="e.g. Ivory poplin shirt"/></label><div className="fc-form-grid"><label className="fc-field">Collection<select value={newItem.category} onChange={e=>setNewItem({...newItem,category:e.target.value})}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></label><label className="fc-field">Audience<select value={newItem.audience} onChange={e=>setNewItem({...newItem,audience:e.target.value})}>{['Everyone','Women','Men'].map(c=><option key={c}>{c}</option>)}</select></label><label className="fc-field">Colour<input value={newItem.color} onChange={e=>setNewItem({...newItem,color:e.target.value})}/></label><label className="fc-field">Brand<input value={newItem.brand} onChange={e=>setNewItem({...newItem,brand:e.target.value})}/></label></div><label className="fc-field">Image URL<input value={newItem.image} onChange={e=>setNewItem({...newItem,image:e.target.value})} placeholder="Paste a direct image URL (optional)"/></label><label className="fc-field">Product page URL<input value={newItem.productUrl} onChange={e=>setNewItem({...newItem,productUrl:e.target.value})} placeholder="Retailer URL (optional)"/></label><div className="fc-modal-actions"><button type="button" className="fc-btn light" onClick={()=>setShowItemForm(false)}>Cancel</button><button className="fc-btn dark" type="submit">Add to wardrobe ↗</button></div></form></div>}
 
     {showBuilder&&<div className="fc-modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setShowBuilder(false)}}><form className="fc-modal fc-builder-modal" onSubmit={saveOutfit}><div className="fc-modal-head"><div><p className="fc-kicker">STYLE IT YOUR WAY</p><h2>The outfit <em>builder.</em></h2><p className="fc-muted">Select pieces, assign an occasion, then save.</p></div><button type="button" className="fc-close" onClick={()=>setShowBuilder(false)}>×</button></div><label className="fc-field">Name your look<input required value={outfitForm.name} onChange={e=>setOutfitForm({...outfitForm,name:e.target.value})} placeholder="e.g. Friday after five"/></label><div className="fc-form-grid"><label className="fc-field">Occasion<select value={outfitForm.occasion} onChange={e=>setOutfitForm({...outfitForm,occasion:e.target.value})}>{OCCASIONS.map(o=><option key={o}>{o}</option>)}</select></label><label className="fc-field">Audience<select value={outfitForm.audience} onChange={e=>setOutfitForm({...outfitForm,audience:e.target.value})}>{['Everyone','Women','Men'].map(a=><option key={a}>{a}</option>)}</select></label></div><p className="fc-muted">Select the items you want in this look. Occasion filtering works on the saved outfit itself.</p><div className="fc-select-grid">{items.map(item=><button type="button" key={item.id} className={selectedIds.includes(item.id)?'fc-select-piece picked':'fc-select-piece'} onClick={()=>toggleSelected(item.id)}><img src={srcOf(item)} alt="" onError={e=>e.currentTarget.src=PLACEHOLDER}/><span>{selectedIds.includes(item.id)?'✓ ': '+ '}{item.name}</span></button>)}</div><div className="fc-modal-actions"><span className="fc-muted">{selectedIds.length} pieces selected</span><button className="fc-btn dark" type="submit">Save outfit ↗</button></div></form></div>}
-    {showAccount&&<div className="fc-modal-backdrop fx-account-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setShowAccount(false)}}><div className="fc-modal fx-account-modal"><div className="fc-modal-head"><div><p className="fc-kicker">ACCOUNT &amp; SYNC</p><h2>Your wardrobe, <em>everywhere.</em></h2></div><button type="button" className="fc-close" onClick={()=>setShowAccount(false)}>×</button></div><AccountPanel sync={sync} notify={notify} onSignedIn={()=>setShowAccount(false)}/></div></div>}
-    {!profile.registeredAt&&!showAccount&&<Onboarding onSignIn={sync.enabled?()=>setShowAccount(true):null} onComplete={info=>{setProfile(p=>({...p,...info,hair:{...p.hair,...Object.fromEntries(Object.entries(info.hair).filter(([,v])=>v))},registeredAt:new Date().toISOString()}));setAudience(info.styleFor);notify(info.name?`Welcome, ${info.name}. Let's add your wardrobe.`:"Profile created. Let's add your wardrobe.");navTo('Upload');}}/>}
+    {showAccount&&<div className="fc-modal-backdrop fx-account-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setShowAccount(false)}}><div className="fc-modal fx-account-modal"><div className="fc-modal-head"><div><p className="fc-kicker">ACCOUNT &amp; SYNC</p><h2>Your wardrobe, <em>everywhere.</em></h2></div><button type="button" className="fc-close" onClick={()=>setShowAccount(false)}>×</button></div><AccountPanel sync={sync} notify={notify} profile={profile} onSignedIn={()=>setShowAccount(false)}/></div></div>}
+    {accountLoading&&!profile.registeredAt&&<div className="fc-modal-backdrop fx-onboard-backdrop"><div className="fc-modal fx-onboard fx-loading-account"><p className="fc-kicker">WELCOME BACK</p><h2>Loading your <em>wardrobe…</em></h2><p className="fc-muted">Fetching your profile and clothes from your account.</p></div></div>}
+    {!profile.registeredAt&&!showAccount&&!accountLoading&&<Onboarding onSignIn={sync.enabled?()=>setShowAccount(true):null} onComplete={info=>{setProfile(p=>({...p,...info,hair:{...p.hair,...Object.fromEntries(Object.entries(info.hair).filter(([,v])=>v))},registeredAt:new Date().toISOString()}));setAudience(info.styleFor);notify(info.name?`Welcome, ${info.name}. Let's add your wardrobe.`:"Profile created. Let's add your wardrobe.");navTo('Upload');}}/>}
     {styleItemId&&items.find(it=>it.id===styleItemId)&&<StyleIt item={items.find(it=>it.id===styleItemId)} items={items} srcOf={srcOf} profile={profile} prefs={prefs} audience={audience} onClose={()=>setStyleItemId(null)} onAskFriends={addToTray} onSaveLook={saveStylistLook} notify={notify}/>}
     {editingId&&items.find(it=>it.id===editingId)&&<ItemEditor item={items.find(it=>it.id===editingId)} src={srcOf(items.find(it=>it.id===editingId))} onSave={saveEdit} onClose={()=>setEditingId(null)} onDelete={id=>{if(window.confirm('Delete this piece from your wardrobe?'))deleteItem(id);}}/>}
     {toast&&<div className="fc-toast">✓ &nbsp;{toast}</div>}

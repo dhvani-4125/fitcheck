@@ -12,6 +12,7 @@
     "test": "node src/occasionFilter.test.mjs && node src/ai/stylist.test.mjs && node src/ai/planners.test.mjs && node src/lib/mergeWardrobe.test.mjs"
   },
   "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
     "@supabase/supabase-js": "^2.119.0",
     "@vitejs/plugin-react": "^6.1.2",
     "react": "^19.3.1",
