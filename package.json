@@ -7,13 +7,15 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:filters": "node src/occasionFilter.test.mjs"
+    "test:filters": "node src/occasionFilter.test.mjs",
+    "test:stylist": "node src/ai/stylist.test.mjs",
+    "test": "node src/occasionFilter.test.mjs && node src/ai/stylist.test.mjs && node src/lib/mergeWardrobe.test.mjs"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "latest",
-    "lucide-react": "^0.468.0",
-    "react": "latest",
-    "react-dom": "latest",
-    "vite": "latest"
+    "@supabase/supabase-js": "^2.119.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "vite": "^8.3.5"
   }
 }
