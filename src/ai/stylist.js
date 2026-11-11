@@ -1,7 +1,7 @@
 // The FitCheck stylist: understands a request, retrieves pieces from the user's own wardrobe,
 // and assembles coordinated outfits using colour, style, silhouette, pattern, weather and
 // learned-preference scoring. Pure JS so it is unit-testable in Node.
-import { paletteScore, colorFamily, isNeutral } from './colors.js';
+import { paletteScore, colorFamily, isNeutral, hexForName } from './colors.js';
 import { OCCASION_BY_ID, STYLIST_OCCASIONS, AESTHETICS, SLOT_LABELS } from './attributes.js';
 
 export const MOODS = ['Confident', 'Relaxed', 'Playful', 'Romantic', 'Low-key', 'Bold'];
@@ -9,14 +9,20 @@ export { STYLIST_OCCASIONS, AESTHETICS };
 
 // ---------------------------------------------------------------- request understanding
 const OCCASION_WORDS = [
+  ['Haldi', /\b(haldi|pithi)\b/],
+  ['Mehndi', /\b(mehndi|mehendi|henna)\b/],
+  ['Sangeet', /\b(sangeet|garba|dandiya|cocktail night)\b/],
+  ['Reception', /\b(reception)\b/],
+  ['Wedding', /\b(wedding|shaadi|pheras|nikah|baraat)\b/],
+  ['Festive', /\b(festive|diwali|eid|puja|pooja|navratri|holi|rakhi|raksha bandhan|karva chauth|onam|pongal|lohri|durga)\b/],
   ['Office', /\b(office|work|meeting|interview|boardroom|presentation|corporate|client|professional|business)\b/],
   ['Date Night', /\b(date|dinner date|anniversary|romantic)\b/],
-  ['Party', /\b(party|birthday|club|clubbing|cocktail|celebration|sangeet)\b/],
+  ['Party', /\b(party|birthday|club|clubbing|cocktail|celebration)\b/],
   ['Going Out', /\b(night out|going out|drinks|bar|concert|gig|chic outfit for a night)\b/],
   ['Brunch', /\b(brunch|lunch|cafe|café|coffee)\b/],
   ['Road Trip', /\b(road ?trip|ride|bike|drive|driving)\b/],
   ['Travel', /\b(travel|flight|airport|trip|vacation|holiday|sightseeing)\b/],
-  ['Formal', /\b(formal|wedding|gala|black tie|reception|ceremony|graduation|festive|diwali|eid)\b/],
+  ['Formal', /\b(formal|gala|black tie|ceremony|graduation)\b/],
   ['Gym', /\b(gym|workout|run|running|yoga|pilates|training|sport|hike|hiking)\b/],
   ['College', /\b(college|class|campus|school|university|lecture|everyday)\b/],
   ['Casual', /\b(casual|weekend|relaxed|errands|chill|lounge|home|comfortable|comfy)\b/],
@@ -29,6 +35,7 @@ const AESTHETIC_WORDS = [
   ['Feminine', /\bfeminine|girly|soft|pretty|romantic\b/],
   ['Casual Luxe', /\bcasual luxe|elevated casual|luxe|cosy|cozy\b/],
   ['Sporty', /\bsporty|athleisure|active\b/],
+  ['Ethnic', /\bethnic|traditional|desi|indian wear|indo-?western\b/],
 ];
 const MOOD_WORDS = [
   ['Confident', /\bconfident|powerful|boss|strong\b/], ['Relaxed', /\brelaxed|easy|comfortable|comfy|chill\b/],
@@ -43,7 +50,7 @@ export function parseRequest(text = '') {
   let count = 5;
   const num = t.match(/\b(\d{1,2})\s+(outfits?|looks?|options?|ideas?)/) || t.match(/\b(one|two|three|four|five|six|seven|eight)\s+(outfits?|looks?|options?|ideas?)/);
   if (num) count = Math.max(1, Math.min(8, Number(num[1]) || NUMBER_WORDS[num[1]] || 5));
-  const colourWords = ['black', 'white', 'navy', 'beige', 'red', 'pink', 'blue', 'green', 'brown', 'grey', 'cream', 'wine', 'sage', 'olive', 'camel'];
+  const colourWords = ['black', 'white', 'navy', 'beige', 'red', 'pink', 'blue', 'green', 'brown', 'grey', 'cream', 'wine', 'sage', 'olive', 'camel', 'yellow', 'gold', 'orange', 'purple', 'lilac', 'teal', 'mustard', 'ivory', 'silver'];
   const avoid = colourWords.filter(c => new RegExp(`\\b(no|not|avoid|without)\\s+(\\w+\\s+)?${c}\\b`).test(t));
   const want = colourWords.filter(c => new RegExp(`\\b${c}\\b`).test(t) && !avoid.includes(c));
   return {
@@ -84,6 +91,16 @@ function occasionFit(item, occ, shift = 0) {
     if (item.slot === 'dress') return 0;
     return 0.4;
   }
+  const base = rangeFit(item, occ, shift);
+  if (!occ.ethnic) return base;
+  // Indian occasions: traditional pieces lead; western pieces only as a fallback (or indo-western where allowed)
+  if (item.aesthetics?.includes('Sporty')) return 0;
+  if (['top', 'bottom', 'dress', 'outer'].includes(item.slot)) return item.ethnic ? Math.max(base, 0.6) : base * (occ.ethnic === true ? 0.2 : 0.7);
+  if (item.ethnic) return Math.min(1, Math.max(base, 0.7) + 0.15);
+  return base * 0.85;
+}
+
+function rangeFit(item, occ, shift) {
   const [lo, hi] = [occ.range[0] + shift, occ.range[1] + shift];
   const f = item.formality ?? 3;
   if (item.slot === 'accessory' || item.slot === 'bag') return f >= lo - 1.5 && f <= hi + 1 ? 0.9 : 0.4;
@@ -91,6 +108,13 @@ function occasionFit(item, occ, shift = 0) {
   const gap = f < lo ? lo - f : f - hi;
   if (item.aesthetics?.includes('Sporty') && occ.id !== 'Casual' && occ.id !== 'Road Trip' && occ.id !== 'Travel') return 0;
   return gap <= 0.5 ? 0.6 : gap <= 1 ? 0.3 : 0;
+}
+
+// Does the item's colour belong to a theme like ['Yellow', 'Mustard'] (haldi) or ['Green'] (mehndi)?
+export function matchesTheme(item, theme = []) {
+  if (!theme?.length) return false;
+  const fams = new Set(theme.map(n => colorFamily({ name: n, hex: hexForName(n) || '#888888' })));
+  return (item.colors || []).some(c => theme.includes(c.name) || (!isNeutral(c) && fams.has(colorFamily(c))));
 }
 
 function weatherFit(item, wp) {
@@ -134,9 +158,14 @@ function itemScore(item, ctx) {
   const p = personalFit(item, ctx.prefs);
   let colour = 0.7;
   const name = item.colors?.[0]?.name?.toLowerCase();
-  if (ctx.avoidColours?.length && item.colors?.some(c => ctx.avoidColours.includes(c.name.toLowerCase()))) colour = 0;
+  const main = ['top', 'bottom', 'dress', 'outer'].includes(item.slot);
+  const avoid = (ctx.avoidColours || []).map(x => x.toLowerCase());
+  if (avoid.length && main && item.colors?.some(c => avoid.includes(c.name.toLowerCase()))) colour = 0;
+  else if (ctx.theme?.length && main) colour = matchesTheme(item, ctx.theme) ? 1 : 0.35;
   else if (ctx.wantColours?.length && name && ctx.wantColours.includes(name)) colour = 1;
-  return { total: o * 0.4 + w * 0.2 + a * 0.2 + p * 0.12 + colour * 0.08, occasion: o, weather: w };
+  const cw = ctx.theme?.length || avoid.length ? 0.2 : 0.08;
+  const prefer = ctx.prefer?.has?.(item.id) ? 0.1 : 0;
+  return { total: o * 0.36 + w * 0.18 + a * (0.26 - cw) + p * 0.12 + colour * cw + prefer, occasion: o, weather: w };
 }
 
 // ---------------------------------------------------------------- outfit scoring
@@ -219,7 +248,26 @@ export function scoreOutfit(pieces, ctx) {
   const sig = signatureOf(pieces.map(p => p.id));
   const recent = (ctx.history || []).slice(0, 20).filter(h => signatureOf(h.items || []) === sig).length;
   const freshness = recent ? -0.12 * recent : 0;
-  const total = occasion * 0.25 + palette.score * 0.2 + style.score * 0.15 + sil.score * 0.07 + pat.score * 0.07 + weather.score * 0.14 + personal * 0.12 + moodAdj + freshness;
+  // colour theme (haldi yellow, mehndi green...) and colours to avoid (e.g. red as a wedding guest)
+  const mainPieces = pieces.filter(p => ['dress', 'top', 'bottom', 'outer'].includes(p.slot));
+  let themeAdj = 0;
+  if (ctx.theme?.length) themeAdj += mainPieces.some(p => matchesTheme(p, ctx.theme)) ? 0.12 : -0.06;
+  const avoid = (ctx.avoidColours || []).map(c => c.toLowerCase());
+  if (avoid.length && mainPieces.some(p => avoid.includes(p.colors?.[0]?.name?.toLowerCase()))) themeAdj -= 0.25;
+  // Indian occasions: juttis, potlis and jewellery finish the look; casual totes and trainers don't
+  const occInfo = ctx.occasion ? OCCASION_BY_ID[ctx.occasion] : null;
+  if (occInfo?.ethnic) {
+    for (const p of pieces.filter(x => ['shoes', 'bag', 'accessory'].includes(x.slot))) {
+      if (p.ethnic) themeAdj += 0.05;
+      else if ((p.formality ?? 3) < occInfo.range[0] - 0.5) themeAdj -= 0.06;
+    }
+    if (mainPieces.some(p => p.ethnic) && !pieces.some(p => p.slot === 'accessory')) themeAdj -= 0.03;
+  } else if (ctx.aesthetic !== 'Ethnic') {
+    // western occasion: traditional juttis/jhumkas with a western outfit are a deliberate fusion, not the default
+    const westernMain = mainPieces.length && mainPieces.every(p => !p.ethnic);
+    if (westernMain) themeAdj -= 0.06 * pieces.filter(p => p.ethnic && ['shoes', 'bag', 'accessory'].includes(p.slot)).length;
+  }
+  const total = occasion * 0.25 + palette.score * 0.2 + style.score * 0.15 + sil.score * 0.07 + pat.score * 0.07 + weather.score * 0.14 + personal * 0.12 + moodAdj + freshness + themeAdj;
   return { total, palette, style, silhouette: sil, pattern: pat, weather, occasion, personal, freshness, recent };
 }
 
@@ -238,6 +286,16 @@ function explain(pieces, s, ctx) {
     const avg = formal.reduce((a, b) => a + b, 0) / Math.max(1, formal.length);
     const tone = avg >= 4.2 ? 'dressed-up' : avg >= 3.2 ? 'polished' : avg >= 2.2 ? 'smart-casual' : 'relaxed';
     lines.push(`The ${anchor.name.replace(/^the\s+/i, '')} sets a ${tone} tone, which suits ${occ.label.toLowerCase()}.`);
+  }
+  if (occ?.ethnic) {
+    const trad = pieces.filter(p => p.ethnic && ['dress', 'top', 'bottom', 'outer'].includes(p.slot));
+    lines.push(trad.length ? `Traditional wear, just right for the ${occ.label.toLowerCase()}.` : `No traditional piece fits yet, so this is the closest western option. See "Complete the look" for an ethnic piece to add.`);
+    const jewels = pieces.filter(p => p.slot === 'accessory' && p.ethnic);
+    if (jewels.length) lines.push(`${jewels[0].name} adds the festive finish.`);
+  }
+  if (ctx.theme?.length) {
+    const hit = pieces.some(p => ['dress', 'top', 'bottom', 'outer'].includes(p.slot) && matchesTheme(p, ctx.theme));
+    lines.push(hit ? `Matches the ${ctx.theme.slice(0, 2).join(' / ').toLowerCase()} colour theme.` : `Nothing in your wardrobe matches the ${ctx.theme[0].toLowerCase()} theme. Add a dupatta or accessory in that colour.`);
   }
   const extras = [s.silhouette.note, s.pattern.note].filter(Boolean);
   if (extras.length) lines.push(extras.map((e, i) => (i ? e : e[0].toUpperCase() + e.slice(1))).join('; ') + '.');
@@ -270,8 +328,10 @@ export function buildContext(input = {}) {
 
 function candidatesBySlot(items, ctx) {
   const by = {};
+  const exclude = ctx.exclude instanceof Set ? ctx.exclude : new Set(ctx.exclude || []);
   for (const item of items) {
     if (!audienceOk(item, ctx.audience)) continue;
+    if (exclude.has(item.id)) continue;
     const sc = itemScore(item, ctx);
     (by[item.slot] ||= []).push({ item, w: Math.max(0.001, sc.total ** 3), sc });
   }
@@ -342,13 +402,13 @@ export function generateOutfits(allItems, input = {}) {
   const occ = ctx.occasion;
   const tries = Math.min(900, 120 + allItems.length * 12);
   for (let i = 0; i < tries; i++) {
-    const useDress = fixedSlots.has('dress') || (!fixedSlots.has('top') && !fixedSlots.has('bottom') && canDress && (!canSeparates || rand() < (occ === 'Formal' || occ === 'Party' || occ === 'Date Night' ? 0.5 : 0.28)));
+    const useDress = fixedSlots.has('dress') || (!fixedSlots.has('top') && !fixedSlots.has('bottom') && canDress && (!canSeparates || rand() < (OCCASION_BY_ID[occ]?.ethnic ? 0.8 : occ === 'Formal' || occ === 'Party' || occ === 'Date Night' ? 0.5 : 0.28)));
     const plan = useDress ? ['dress'] : ['top', 'bottom'];
     if (has('shoes')) plan.push('shoes');
     const layerP = ctx.wp?.needsLayer ? 0.92 : ctx.wp?.band === 'hot' ? 0.05 : occ === 'Office' ? 0.55 : 0.35;
     if (has('outer') && (fixedSlots.has('outer') || rand() < layerP)) plan.push('outer');
     if (has('bag') && occ !== 'Gym' && (fixedSlots.has('bag') || rand() < 0.75)) plan.push('bag');
-    if (has('accessory') && (fixedSlots.has('accessory') || rand() < 0.5)) plan.push('accessory');
+    if (has('accessory') && (fixedSlots.has('accessory') || rand() < (OCCASION_BY_ID[occ]?.ethnic ? 0.9 : 0.5))) plan.push('accessory');
     const pieces = plan.map(slot => fixed.find(f => f.slot === slot) || weightedPick(cands[slot] || [], rand)).filter(Boolean);
     if (pieces.length < 2) continue;
     const sig = signatureOf(pieces.map(p => p.id));

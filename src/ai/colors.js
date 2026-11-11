@@ -16,7 +16,7 @@ export const NAMED_COLORS = [
 // Colours that behave as neutrals when styling, even if they carry some saturation.
 const FASHION_NEUTRALS = new Set([
   'black', 'charcoal', 'grey', 'silver', 'white', 'ivory', 'cream', 'beige', 'camel', 'tan',
-  'brown', 'coffee', 'navy', 'denim', 'khaki',
+  'brown', 'coffee', 'navy', 'denim', 'khaki', 'gold', // gold reads as a metallic neutral, especially in Indian wear
 ]);
 
 const ALIASES = { gray: 'Grey', 'off white': 'Ivory', 'off-white': 'Ivory', maroon: 'Burgundy', fossil: 'Beige', lacquer: 'Brown', 'baby pink': 'Pink', chocolate: 'Brown', nude: 'Beige', stone: 'Beige', ecru: 'Ivory', oatmeal: 'Beige', forest: 'Green', emerald: 'Green', mint: 'Sage', lavender: 'Lilac', mauve: 'Lilac', coral: 'Orange', terracotta: 'Rust', indigo: 'Navy', 'dawn': 'Grey' };
@@ -164,7 +164,7 @@ export function colorFamily(color) {
   if (isNeutral(color)) return 'neutral';
   const [h] = rgbToHsl(hexToRgb(color.hex));
   if (h < 20 || h >= 330) return 'red';
-  if (h < 45) return 'orange';
+  if (h < 38) return 'orange'; // mustard (~42°) and gold count as yellow
   if (h < 70) return 'yellow';
   if (h < 170) return 'green';
   if (h < 255) return 'blue';

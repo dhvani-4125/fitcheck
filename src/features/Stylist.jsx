@@ -4,6 +4,7 @@ import { STYLIST_OCCASIONS, AESTHETICS, SLOT_LABELS, OCCASION_BY_ID } from '../a
 import { recommendFragrance } from '../ai/fragrance.js';
 import { recommendHair } from '../ai/hair.js';
 import { analyzeInspiration } from '../ai/vision.js';
+import { suggestBuy } from '../ai/shopping.js';
 import WeatherCard from './WeatherCard.jsx';
 import { Img, Chips, HairGlyph, PageHeading, Swatches } from './shared.jsx';
 
@@ -17,7 +18,7 @@ const EXAMPLES = [
 ];
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-export default function Stylist({ items, srcOf, prefs, setPrefs, history, profile, weather, audience, setAudience, onSaveLook, onPlan, onWear, notify, preset, onUpload }) {
+export default function Stylist({ items, srcOf, prefs, setPrefs, history, profile, weather, audience, setAudience, onSaveLook, onPlan, onWear, notify, preset, onUpload, onAskFriends }) {
   const [prompt, setPrompt] = useState('');
   const [occasion, setOccasion] = useState(preset?.occasion || null);
   const [aesthetic, setAesthetic] = useState(null);
@@ -149,6 +150,7 @@ export default function Stylist({ items, srcOf, prefs, setPrefs, history, profil
               onSave={(meta) => { onSaveLook(o, { ...meta, occasion: ctx?.occasion }); setOutfits(os => os.map(x => x === o ? { ...x, saved: true } : x)); }}
               onPlan={(day, meta) => onPlan(day, o, { ...meta, occasion: ctx?.occasion })}
               onWear={(meta) => { onWear(o, { ...meta, occasion: ctx?.occasion }); feedback(o, 1); }}
+              onAskFriends={onAskFriends ? () => onAskFriends(o, { occasion: ctx?.occasion }) : null}
             />
           ))}
         </section>
@@ -157,14 +159,15 @@ export default function Stylist({ items, srcOf, prefs, setPrefs, history, profil
   );
 }
 
-function OutfitCard({ index, outfit, byId, srcOf, ctx, profile, prefs, onSwap, onRestyle, onVote, onRate, onSave, onPlan, onWear }) {
+export function OutfitCard({ index, outfit, byId, srcOf, ctx, profile, prefs, onSwap, onRestyle, onVote, onRate, onSave, onPlan, onWear, onAskFriends, kicker, title, notes, buy: buyProp, hidePlan }) {
   const pieces = outfit.items.map(id => byId.get(id)).filter(Boolean);
+  const buy = useMemo(() => buyProp !== undefined ? buyProp : suggestBuy(pieces, { ...ctx }), [buyProp, outfit.items.join(), ctx]); // eslint-disable-line react-hooks/exhaustive-deps
   const [day, setDay] = useState('');
   const fragrance = useMemo(() => recommendFragrance({
     occasion: ctx?.occasion, aesthetic: ctx?.aesthetic, mood: ctx?.mood, weather: ctx?.weather, outfitAesthetic: outfit.aesthetic,
     prefs: profile.fragrancePrefs, collection: profile.fragrances, learned: prefs?.fragranceFamilies,
   }), [ctx, outfit.aesthetic, profile, prefs?.fragranceFamilies]);
-  const hair = useMemo(() => recommendHair({ pieces, occasion: ctx?.occasion, aesthetic: ctx?.aesthetic, weather: ctx?.weather, profile: profile.hair, gender: profile.gender, learned: prefs?.hairStyles }), [outfit.items.join(), ctx, profile.hair, profile.gender, prefs?.hairStyles]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hair = useMemo(() => recommendHair({ pieces, occasion: ctx?.occasion, theme: ctx?.theme, aesthetic: ctx?.aesthetic, weather: ctx?.weather, profile: profile.hair, gender: profile.gender, learned: prefs?.hairStyles }), [outfit.items.join(), ctx, profile.hair, profile.gender, prefs?.hairStyles]); // eslint-disable-line react-hooks/exhaustive-deps
   const scent = fragrance.owned[0] && fragrance.owned[0].score >= (fragrance.profiles[0]?.score ?? 0) - 15 ? fragrance.owned[0] : fragrance.profiles[0];
   const altScent = scent === fragrance.owned[0] ? fragrance.profiles[0] : fragrance.owned[0] || fragrance.profiles[1];
   const style = hair[0];
@@ -174,8 +177,8 @@ function OutfitCard({ index, outfit, byId, srcOf, ctx, profile, prefs, onSwap, o
     <article className="fx-outfit">
       <header className="fx-outfit-head">
         <div>
-          <p className="fc-kicker">{outfit.surprise ? 'SURPRISE LOOK' : `LOOK ${String(index + 1).padStart(2, '0')}`} · {outfit.aesthetic}</p>
-          <h3>{titleFor(pieces, ctx)}</h3>
+          <p className="fc-kicker">{kicker || (outfit.surprise ? 'SURPRISE LOOK' : `LOOK ${String(index + 1).padStart(2, '0')}`)} · {outfit.aesthetic}</p>
+          <h3>{title || titleFor(pieces, ctx)}</h3>
         </div>
         <div className="fx-score" title={Object.entries(outfit.breakdown).map(([k, v]) => `${k} ${v}`).join(' · ')}><strong>{outfit.score}</strong><span>MATCH</span></div>
       </header>
@@ -185,12 +188,12 @@ function OutfitCard({ index, outfit, byId, srcOf, ctx, profile, prefs, onSwap, o
           <figure key={p.id} className={`fx-piece slot-${p.slot}`}>
             <Img src={srcOf(p)} alt={p.name} />
             <figcaption><span>{SLOT_LABELS[p.slot]}</span>{p.name}</figcaption>
-            <button type="button" className="fx-swap" onClick={() => onSwap(p.slot)} title={`Swap ${SLOT_LABELS[p.slot].toLowerCase()} and keep the rest`}>↻ Swap</button>
+            {onSwap && <button type="button" className="fx-swap" onClick={() => onSwap(p.slot)} title={`Swap ${SLOT_LABELS[p.slot].toLowerCase()} and keep the rest`}>↻ Swap</button>}
           </figure>
         ))}
       </div>
 
-      <ul className="fx-why">{outfit.explanation.map(l => <li key={l}>{l}</li>)}</ul>
+      <ul className="fx-why">{[...(notes || []), ...outfit.explanation].map(l => <li key={l}>{l}</li>)}</ul>
 
       <div className="fx-complete">
         {scent && (
@@ -217,30 +220,42 @@ function OutfitCard({ index, outfit, byId, srcOf, ctx, profile, prefs, onSwap, o
         )}
       </div>
 
-      <div className="fx-restyle">
+      {buy && (
+        <div className="fx-shop">
+          <div>
+            <p className="fx-label">Complete the look · shop</p>
+            <h4>{buy.title}</h4>
+            <p>{buy.why}</p>
+          </div>
+          <div className="fx-shop-links">{buy.links.map(l => <a key={l.store} href={l.url} target="_blank" rel="noopener noreferrer">{l.store} ↗</a>)}</div>
+        </div>
+      )}
+
+      {onRestyle && <div className="fx-restyle">
         <span>Adjust:</span>
         <button type="button" onClick={() => onRestyle('formal')}>More formal</button>
         <button type="button" onClick={() => onRestyle('casual')}>More casual</button>
         <button type="button" onClick={() => onRestyle('colour')}>Different colours</button>
         {pieces.some(p => p.slot === 'shoes') && <button type="button" onClick={() => onSwap('shoes')}>Other shoes</button>}
         {pieces.some(p => p.slot === 'bag') && <button type="button" onClick={() => onSwap('bag')}>Another bag</button>}
-      </div>
+      </div>}
 
       <footer className="fx-outfit-foot">
-        <div className="fx-feedback">
+        {onVote ? <div className="fx-feedback">
           <button type="button" className={outfit.vote === 'up' ? 'on' : ''} onClick={() => onVote(1)} aria-label="Like this outfit">♥ Love it</button>
           <button type="button" className={outfit.vote === 'down' ? 'on' : ''} onClick={() => onVote(-1)} aria-label="Dislike this outfit">✕ Not for me</button>
           <span className="fx-stars" role="group" aria-label="Rate this outfit">
             {[1, 2, 3, 4, 5].map(n => <button type="button" key={n} className={(outfit.rating || 0) >= n ? 'on' : ''} onClick={() => onRate(n)} aria-label={`${n} star${n > 1 ? 's' : ''}`}>★</button>)}
           </span>
-        </div>
+        </div> : <span />}
         <div className="fx-row">
-          <select value={day} onChange={e => { setDay(e.target.value); if (e.target.value) onPlan(e.target.value, meta); }} aria-label="Plan for a day">
+          {!hidePlan && onPlan && <select value={day} onChange={e => { setDay(e.target.value); if (e.target.value) onPlan(e.target.value, meta); }} aria-label="Plan for a day">
             <option value="">Plan for…</option>
             {DAYS.map(d => <option key={d}>{d}</option>)}
-          </select>
-          <button type="button" className="fc-btn light" onClick={() => onWear(meta)}>✓ Wearing it</button>
-          <button type="button" className="fc-btn dark" disabled={outfit.saved} onClick={() => onSave(meta)}>{outfit.saved ? 'Saved ♥' : 'Save look'}</button>
+          </select>}
+          {onAskFriends && <button type="button" className="fc-btn light" onClick={() => onAskFriends(meta)}>💬 Ask friends</button>}
+          {onWear && <button type="button" className="fc-btn light" onClick={() => onWear(meta)}>✓ Wearing it</button>}
+          {onSave && <button type="button" className="fc-btn dark" disabled={outfit.saved} onClick={() => onSave(meta)}>{outfit.saved ? 'Saved ♥' : 'Save look'}</button>}
         </div>
       </footer>
     </article>
@@ -251,6 +266,6 @@ function titleFor(pieces, ctx) {
   const lead = pieces.find(p => p.slot === 'dress') || pieces.find(p => p.slot === 'outer') || pieces.find(p => p.slot === 'top') || pieces[0];
   const colour = lead?.colors?.[0]?.name || '';
   const occ = ctx?.occasion ? OCCASION_BY_ID[ctx.occasion].id : 'Anywhere';
-  const words = { Office: 'for the office', College: 'for campus', Casual: 'off duty', 'Going Out': 'after dark', 'Date Night': 'for date night', Party: 'for the party', Brunch: 'for brunch', Travel: 'in transit', 'Road Trip': 'for the open road', Formal: 'for the occasion', Gym: 'in motion', Anywhere: 'for any day' };
+  const words = { Office: 'for the office', College: 'for campus', Casual: 'off duty', 'Going Out': 'after dark', 'Date Night': 'for date night', Party: 'for the party', Brunch: 'for brunch', Travel: 'in transit', 'Road Trip': 'for the open road', Formal: 'for the occasion', Gym: 'in motion', Haldi: 'for the haldi', Mehndi: 'for the mehndi', Sangeet: 'for the sangeet', Wedding: 'for the wedding', Reception: 'for the reception', Festive: 'for the festivities', Anywhere: 'for any day' };
   return `${colour} ${(lead?.subcategory || 'look').toLowerCase()}, ${words[occ]}`.trim();
 }

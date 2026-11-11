@@ -57,3 +57,47 @@ export async function downloadPhoto(path) {
 export async function deletePhoto(path) {
   try { await supabase.storage.from(BUCKET).remove([path]); } catch { /* best effort */ }
 }
+
+// ---------- Ask Friends polls (public link: anyone with it can view and vote, no login)
+const POLL_BUCKET = 'polls';
+export function newPollId() {
+  const a = new Uint8Array(9); crypto.getRandomValues(a);
+  return Array.from(a, b => 'abcdefghijkmnpqrstuvwxyz23456789'[b % 32]).join('');
+}
+export async function createPoll(userId, { question, options }) {
+  const id = newPollId();
+  const uploaded = [];
+  for (let i = 0; i < options.length; i++) {
+    const path = `${userId}/${id}-${i}.jpg`;
+    const { error } = await supabase.storage.from(POLL_BUCKET).upload(path, await dataUrlToBlob(options[i].dataUrl), { contentType: 'image/jpeg', upsert: true });
+    if (error) throw error;
+    uploaded.push({ label: options[i].label, image: supabase.storage.from(POLL_BUCKET).getPublicUrl(path).data.publicUrl });
+  }
+  const { error } = await supabase.from('polls').insert({ id, owner: userId, question, options: uploaded });
+  if (error) throw error;
+  return id;
+}
+export async function fetchPoll(id) {
+  const { data, error } = await supabase.from('polls').select('id, question, options, created_at').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+export async function fetchVotes(id) {
+  const { data, error } = await supabase.from('poll_votes').select('option_index, voter_name, comment, created_at').eq('poll_id', id).order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+export async function castVote(id, optionIndex, voterName, comment) {
+  const { error } = await supabase.from('poll_votes').insert({ poll_id: id, option_index: optionIndex, voter_name: (voterName || '').slice(0, 40) || null, comment: (comment || '').slice(0, 200) || null });
+  if (error) throw error;
+}
+export async function listMyPolls(userId) {
+  const { data, error } = await supabase.from('polls').select('id, question, options, created_at, poll_votes(option_index, voter_name, comment)').eq('owner', userId).order('created_at', { ascending: false }).limit(20);
+  if (error) throw error;
+  return data || [];
+}
+export async function deletePoll(id) {
+  const { error } = await supabase.from('polls').delete().eq('id', id);
+  if (error) throw error;
+}
+export const pollLink = (id) => `${window.location.origin}${window.location.pathname}?poll=${id}`;

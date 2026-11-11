@@ -15,30 +15,37 @@ export const SLOT_LABELS = {
 };
 
 export const SUBCATEGORIES = {
-  top: ['Shirt', 'T-shirt', 'Blouse', 'Sweater', 'Polo', 'Tank', 'Activewear top'],
-  bottom: ['Jeans', 'Trousers', 'Skirt', 'Shorts', 'Leggings', 'Joggers'],
-  outer: ['Hoodie', 'Jacket', 'Coat', 'Blazer', 'Cardigan'],
-  dress: ['Dress', 'Jumpsuit', 'Gown', 'Co-ord set', 'Suit', 'Ethnic set'],
-  shoes: ['Sneakers', 'Heels', 'Boots', 'Sandals', 'Loafers', 'Flats', 'Formal shoes'],
-  bag: ['Handbag', 'Tote', 'Clutch', 'Backpack', 'Crossbody'],
-  accessory: ['Watch', 'Jewellery', 'Belt', 'Scarf', 'Sunglasses', 'Hat'],
+  top: ['Shirt', 'T-shirt', 'Blouse', 'Sweater', 'Polo', 'Tank', 'Activewear top', 'Kurta', 'Kurti', 'Ethnic blouse'],
+  bottom: ['Jeans', 'Trousers', 'Skirt', 'Shorts', 'Leggings', 'Joggers', 'Salwar / churidar', 'Dhoti / patiala', 'Palazzo'],
+  outer: ['Hoodie', 'Jacket', 'Coat', 'Blazer', 'Cardigan', 'Nehru jacket', 'Shrug'],
+  dress: ['Dress', 'Jumpsuit', 'Gown', 'Co-ord set', 'Suit', 'Lehenga', 'Saree', 'Anarkali', 'Kurta set', 'Sharara set', 'Sherwani', 'Indo-western', 'Ethnic set'],
+  shoes: ['Sneakers', 'Heels', 'Boots', 'Sandals', 'Loafers', 'Flats', 'Formal shoes', 'Juttis / mojaris', 'Kolhapuris'],
+  bag: ['Handbag', 'Tote', 'Clutch', 'Backpack', 'Crossbody', 'Potli'],
+  accessory: ['Watch', 'Jewellery', 'Belt', 'Scarf', 'Sunglasses', 'Hat', 'Jewellery set', 'Jhumkas', 'Bangles', 'Dupatta', 'Maang tikka'],
 };
 
 export const PATTERNS = ['Solid', 'Stripes', 'Checks', 'Floral / print', 'Textured'];
 export const FITS = ['Fitted', 'Regular', 'Oversized'];
-export const AESTHETICS = ['Minimalist', 'Old Money', 'Streetwear', 'Chic', 'Feminine', 'Casual Luxe', 'Sporty'];
+export const AESTHETICS = ['Minimalist', 'Old Money', 'Streetwear', 'Chic', 'Feminine', 'Casual Luxe', 'Sporty', 'Ethnic'];
+export const ETHNIC_SUBS = new Set(['Kurta', 'Kurti', 'Ethnic blouse', 'Salwar / churidar', 'Dhoti / patiala', 'Nehru jacket', 'Lehenga', 'Saree', 'Anarkali', 'Kurta set', 'Sharara set', 'Sherwani', 'Indo-western', 'Ethnic set', 'Juttis / mojaris', 'Kolhapuris', 'Potli', 'Jewellery set', 'Jhumkas', 'Bangles', 'Dupatta', 'Maang tikka']);
+const ETHNIC_RE = /lehenga|saree|\bsari\b|anarkali|sharara|gharara|sherwani|kurta|kurti|salwar|churidar|dhoti|patiala|dupatta|jhumka|bangle|kada|tikka|jutti|mojari|kolhapuri|potli|banarasi|bandhani|chikankari|zari|ethnic|indo-?western|nehru|bandhgala|choli|georgette|kanjeevaram|kanjivaram|paithani|phulkari/;
 
 const SLOT_RULES = [
-  ['outer', /\b(jacket|coat|blazer|hoodie|cardigan|parka|trench|gilet|shacket|windbreaker|puffer)\b/],
-  ['dress', /\b(dress|gown|jumpsuit|playsuit|romper|lehenga|saree|sari|anarkali|suit|co-?ord|set)\b/],
-  ['shoes', /\b(shoes?|sneakers?|trainers?|loafers?|heels?|pumps?|boots?|sandals?|footwear|mules?|flats?|lace-up|slides?|espadrilles?)\b/],
-  ['bag', /\b(bag|handbag|tote|clutch|backpack|purse|crossbody|satchel)\b/],
-  ['bottom', /\b(trousers?|pants?|jeans?|skirts?|shorts|leggings?|tights?|joggers?|chinos?|bottoms|culottes|palazzo)\b/],
-  ['top', /\b(shirt|tee|t-shirt|top|blouse|sweater|knit|crewneck|jumper|polo|bra|tank|camisole|cami|turtleneck|sweatshirt|kurta|bodysuit|vest)\b/],
-  ['accessory', /\b(watch|belt|necklace|earrings?|bracelet|ring|scarf|hat|cap|sunglasses|jewell?ery|tie)\b/],
+  ['dress', /\b(lehenga|saree|sari|anarkali|sharara|gharara|sherwani|kurta set|salwar suit|indo-?western)\b/],
+  ['outer', /\b(jacket|coat|blazer|hoodie|cardigan|parka|trench|gilet|shacket|windbreaker|puffer|shrug|bandhgala)\b/],
+  ['dress', /\b(dress|gown|jumpsuit|playsuit|romper|suit|co-?ord|set)\b/],
+  ['shoes', /\b(shoes?|sneakers?|trainers?|loafers?|heels?|pumps?|boots?|sandals?|footwear|mules?|flats?|lace-up|slides?|espadrilles?|juttis?|mojaris?|kolhapuris?)\b/],
+  ['bag', /\b(bag|handbag|tote|clutch|backpack|purse|crossbody|satchel|potli)\b/],
+  ['bottom', /\b(trousers?|pants?|jeans?|skirts?|shorts|leggings?|tights?|joggers?|chinos?|bottoms|culottes|palazzo|salwar|churidar|dhoti|patiala)\b/],
+  ['top', /\b(shirt|tee|t-shirt|top|blouse|sweater|knit|crewneck|jumper|polo|bra|tank|camisole|cami|turtleneck|sweatshirt|kurta|kurti|choli|bodysuit|vest)\b/],
+  ['accessory', /\b(watch|belt|necklace|earrings?|bracelet|ring|scarf|hat|cap|sunglasses|jewell?ery|tie|jhumkas?|bangles?|kada|dupatta|tikka|choker)\b/],
 ];
 
 const SUB_RULES = [
+  [/lehenga/, 'Lehenga'], [/saree|\bsari\b|kanjeevaram|kanjivaram|paithani/, 'Saree'], [/anarkali/, 'Anarkali'], [/sharara|gharara/, 'Sharara set'], [/sherwani/, 'Sherwani'],
+  [/kurta set|salwar suit|palazzo suit/, 'Kurta set'], [/indo-?western/, 'Indo-western'], [/kurti/, 'Kurti'], [/kurta/, 'Kurta'], [/choli|ethnic blouse/, 'Ethnic blouse'],
+  [/salwar|churidar/, 'Salwar / churidar'], [/dhoti|patiala/, 'Dhoti / patiala'], [/palazzo/, 'Palazzo'], [/nehru|bandhgala/, 'Nehru jacket'], [/shrug/, 'Shrug'],
+  [/jutti|mojari/, 'Juttis / mojaris'], [/kolhapuri/, 'Kolhapuris'], [/potli/, 'Potli'], [/jhumka/, 'Jhumkas'], [/bangle|kada/, 'Bangles'], [/dupatta/, 'Dupatta'], [/tikka/, 'Maang tikka'], [/necklace set|jewell?ery set|choker/, 'Jewellery set'],
   [/jean|denim/, 'Jeans'], [/skirt/, 'Skirt'], [/short/, 'Shorts'], [/legging|tight/, 'Leggings'], [/jogger/, 'Joggers'], [/trouser|pant|chino|palazzo/, 'Trousers'],
   [/hoodie/, 'Hoodie'], [/blazer|suit jacket/, 'Blazer'], [/coat|trench|parka/, 'Coat'], [/cardigan/, 'Cardigan'], [/jacket/, 'Jacket'],
   [/gown/, 'Gown'], [/jumpsuit|playsuit/, 'Jumpsuit'], [/lehenga|saree|kurta set|anarkali|palazzo suit/, 'Ethnic set'], [/\bsuit\b/, 'Suit'], [/\bset\b|co-?ord/, 'Co-ord set'], [/dress/, 'Dress'],
@@ -71,7 +78,10 @@ function inferFormality(t, slot, sub) {
   else if (has(t, /tailored|trouser|oxford|loafer|blazer|blouse|poplin|wool|lambskin|cashmere|leather/)) f = Math.max(f, 3.5);
   if (has(t, /jean|denim|tee\b|t-shirt|sneaker|hoodie|sweatshirt|canvas|cargo|shorts|slide/)) f = Math.min(f, 2);
   if (has(t, /legging|\bbra\b|jogger|running|gym|mesh|tight\b|track|activewear|athletic/)) f = 1;
-  if (sub === 'Ethnic set') f = Math.max(f, 4);
+  if (['Ethnic set', 'Saree', 'Anarkali', 'Sharara set'].includes(sub)) f = Math.max(f, 4);
+  if (sub === 'Lehenga' || sub === 'Sherwani') f = Math.max(f, 4.5);
+  if (['Kurta set', 'Indo-western', 'Jewellery set', 'Potli', 'Maang tikka'].includes(sub)) f = Math.max(f, 3.5);
+  if (['Kurta', 'Kurti', 'Ethnic blouse', 'Juttis / mojaris', 'Jhumkas', 'Bangles', 'Dupatta', 'Nehru jacket', 'Salwar / churidar'].includes(sub)) f = Math.max(f, 3);
   return Math.round(f * 2) / 2;
 }
 
@@ -83,8 +93,9 @@ function inferWarmth(t, slot) {
   return Math.max(0, Math.min(5, w));
 }
 
-function inferAesthetics(t, slot, colors, formality) {
+function inferAesthetics(t, slot, colors, formality, ethnic) {
   const tags = new Set();
+  if (ethnic) tags.add('Ethnic');
   const names = colors.map(c => c.name.toLowerCase());
   const neutralOnly = names.every(n => ['black', 'white', 'ivory', 'cream', 'beige', 'grey', 'charcoal', 'camel', 'navy', 'brown', 'coffee', 'tan'].includes(n));
   if (neutralOnly && !has(t, /print|floral|graphic|logo/)) tags.add('Minimalist');
@@ -126,12 +137,20 @@ export const STYLIST_OCCASIONS = [
   { id: 'Road Trip', label: 'Road Trip / Ride', range: [1, 2.5], saved: 'Travel' },
   { id: 'Formal', label: 'Formal Events', range: [4, 5], saved: 'Formal' },
   { id: 'Gym', label: 'Gym / Activewear', range: [1, 1.5], saved: 'Athleisure' },
+  // Indian occasions. ethnic: true = traditional wear expected; 'prefer' = traditional or indo-western.
+  { id: 'Haldi', label: 'Haldi', range: [2.5, 4], saved: 'Wedding', ethnic: true, theme: ['Yellow', 'Mustard', 'Gold'], outdoor: true, indian: true },
+  { id: 'Mehndi', label: 'Mehndi', range: [3, 4.5], saved: 'Wedding', ethnic: true, theme: ['Green', 'Olive', 'Sage', 'Pink', 'Orange'], outdoor: true, indian: true },
+  { id: 'Sangeet', label: 'Sangeet', range: [3.5, 5], saved: 'Party', ethnic: 'prefer', indian: true },
+  { id: 'Wedding', label: 'Wedding ceremony', range: [4, 5], saved: 'Wedding', ethnic: true, indian: true },
+  { id: 'Reception', label: 'Reception', range: [4, 5], saved: 'Formal', ethnic: 'prefer', indian: true },
+  { id: 'Festive', label: 'Festive (Diwali, Eid, Puja)', range: [3, 4.5], saved: 'Festive', ethnic: true, indian: true },
 ];
 export const OCCASION_BY_ID = Object.fromEntries(STYLIST_OCCASIONS.map(o => [o.id, o]));
 
-export function occasionsForFormality(f, aesthetics = []) {
+export function occasionsForFormality(f, aesthetics = [], ethnic = false) {
   return STYLIST_OCCASIONS.filter(o => {
     if (o.id === 'Gym') return aesthetics.includes('Sporty');
+    if (o.ethnic === true && !ethnic) return false;
     return f >= o.range[0] - 0.5 && f <= o.range[1] + 0.5;
   }).map(o => o.id);
 }
@@ -156,7 +175,8 @@ export function enrichItem(item) {
   const colors = Array.isArray(item.colors) && item.colors.length ? item.colors : parseColorText(item.color);
   const formality = typeof item.formality === 'number' ? item.formality : inferFormality(text, slot, subcategory);
   const warmth = typeof item.warmth === 'number' ? item.warmth : inferWarmth(text, slot);
-  const aesthetics = Array.isArray(item.aesthetics) && item.aesthetics.length ? item.aesthetics : inferAesthetics(text, slot, colors, formality);
+  const ethnic = typeof item.ethnic === 'boolean' ? item.ethnic : (ETHNIC_RE.test(text) || ETHNIC_SUBS.has(subcategory));
+  const aesthetics = Array.isArray(item.aesthetics) && item.aesthetics.length ? item.aesthetics : inferAesthetics(text, slot, colors, formality, ethnic);
   const material = item.material ?? inferMaterial(text);
   return {
     ...item,
@@ -172,7 +192,8 @@ export function enrichItem(item) {
     aesthetics,
     fit: item.fit || inferFit(text),
     neckline: item.neckline !== undefined ? item.neckline : inferNeckline(text, slot),
-    occasions: Array.isArray(item.occasions) && item.occasions.length ? item.occasions : occasionsForFormality(formality, aesthetics),
+    ethnic,
+    occasions: Array.isArray(item.occasions) && item.occasions.length ? item.occasions : occasionsForFormality(formality, aesthetics, ethnic),
     seasons: Array.isArray(item.seasons) && item.seasons.length ? item.seasons : inferSeasons(warmth),
     rainSafe: typeof item.rainSafe === 'boolean' ? item.rainSafe : (slot === 'shoes' ? /boot|sneaker|trainer|running|rubber/.test(text) && !/suede|satin/.test(text) : !/suede|satin|silk|velvet/.test(text)),
     breathable: typeof item.breathable === 'boolean' ? item.breathable : /linen|cotton|mesh|jersey|poplin|tee|tank|halter/.test(text),

@@ -49,6 +49,9 @@ export function mergeWardrobe(local, remote) {
     version: 1,
     items, looks, plans, history, profile,
     prefs: newer.prefs || older.prefs,
+    // wedding/festive events and trips: the most recently edited device's list wins (keeps deletions)
+    events: Array.isArray(newer.events) && (newer.events.length || !older.events?.length) ? newer.events : (older.events || []),
+    trips: Array.isArray(newer.trips) && (newer.trips.length || !older.trips?.length) ? newer.trips : (older.trips || []),
     deleted: { items: [...delItems].slice(-500), looks: [...delLooks].slice(-500) },
     updatedAt: new Date(Math.max(ts(l), ts(r), 0) || Date.now()).toISOString(),
   };

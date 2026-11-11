@@ -113,3 +113,14 @@ Without setup, FitCheck saves everything in the browser. To let people sign in a
 5. For GitHub Pages, go to the repo's **Settings → Secrets and variables → Actions → Variables** and add `SUPABASE_URL` and `SUPABASE_ANON_KEY`, then re-run the deploy. For local development, copy `.env.example` to `.env.local` and fill in the values.
 
 The anon key is designed to be public. Data is protected by the row-level-security policies. Sync merges devices (the newest edit wins, and deletions are respected), and photos upload in the background. The free tier includes 50,000 monthly users, 500 MB of database and 1 GB of photo storage.
+
+## Weddings & festive, trips, shopping and Ask Friends
+
+| Feature | Where | What it does |
+|---|---|---|
+| Indian wardrobe | Upload / Edit | Understands lehengas, sarees, anarkalis, kurta sets, shararas, sherwanis, juttis, potlis, jhumkas, dupattas and more |
+| Weddings & festive planner | **Weddings & Festive** | Indian wedding (haldi → reception), Diwali, Eid and Navratri templates. Plans a different look for each function from your wardrobe, follows colour themes (yellow haldi, green mehndi), follows guest etiquette (no red or white at the ceremony), checks the weather per day and pairs jewellery, hair (gajra bun, flower braid) and attar |
+| Trip planner | **Trips** | Destination + dates → daily outfits for your activities, a light packing list (pieces re-used), destination style tips, and the 1–3 things worth buying before you go. Uses the live forecast for the next 15 days, otherwise last year's weather for the same dates |
+| Style this piece | Wardrobe → **✦ Style it** | Three ways to wear any item, for any occasion or destination |
+| Complete the look | Every outfit | One suggested piece to buy, with search links to Myntra, AJIO, Nykaa Fashion and Amazon |
+| Ask Friends | **Ask Friends** / "💬 Ask friends" on any look | 2–4 options become a numbered image to share on WhatsApp. With accounts on, it also creates a voting link: friends vote without signing up and you see results live (run the latest `supabase/schema.sql` to add the poll tables) |

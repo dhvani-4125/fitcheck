@@ -68,3 +68,44 @@ export async function fetchForecast({ lat, lon }) {
   });
   return { fetchedAt: Date.now(), days };
 }
+
+// Weather for a date range (trips, wedding functions). Uses the live forecast when the dates
+// are within the next 15 days; otherwise last year's weather for the same dates as a guide.
+export async function fetchRangeWeather({ lat, lon }, startDate, endDate) {
+  const day = 24 * 3600 * 1000;
+  const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
+  const start = new Date(startDate + 'T00:00:00Z'), end = new Date(endDate + 'T00:00:00Z');
+  const inForecast = start >= new Date(today - day) && end <= new Date(+today + 15 * day);
+  const shift = (d, years) => { const x = new Date(d); x.setUTCFullYear(x.getUTCFullYear() + years); return x.toISOString().slice(0, 10); };
+  let qStart = startDate, qEnd = endDate, typical = false;
+  if (!inForecast) {
+    typical = true;
+    let years = -1;
+    while (new Date(shift(end, years) + 'T00:00:00Z') > new Date(+today - 6 * day)) years -= 1;
+    qStart = shift(start, years); qEnd = shift(end, years);
+  }
+  const daily = 'temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_sum,wind_speed_10m_max,weather_code' + (typical ? '' : ',precipitation_probability_max');
+  const params = new URLSearchParams({ latitude: lat, longitude: lon, timezone: 'auto', start_date: qStart, end_date: qEnd, daily, hourly: 'relative_humidity_2m' });
+  const base = typical ? 'https://archive-api.open-meteo.com/v1/archive' : 'https://api.open-meteo.com/v1/forecast';
+  const res = await fetch(`${base}?${params}`);
+  if (!res.ok) throw new Error('Weather for those dates is unavailable right now.');
+  const j = await res.json();
+  const hum = {};
+  (j.hourly?.time || []).forEach((t, i) => { (hum[t.slice(0, 10)] ||= []).push(j.hourly.relative_humidity_2m[i]); });
+  const realDates = [];
+  for (let t = +start; t <= +end; t += day) realDates.push(new Date(t).toISOString().slice(0, 10));
+  return (j.daily?.time || []).map((d, i) => {
+    const h = (hum[d] || []).filter(v => v != null);
+    const rain = typical ? (j.daily.precipitation_sum[i] >= 5 ? 75 : j.daily.precipitation_sum[i] >= 1 ? 45 : 10) : (j.daily.precipitation_probability_max?.[i] ?? 0);
+    return {
+      date: realDates[i] || d, typical,
+      temp: Math.round((j.daily.temperature_2m_max[i] * 0.65 + j.daily.temperature_2m_min[i] * 0.35) * 10) / 10,
+      feels: Math.round((j.daily.apparent_temperature_max[i] * 0.65 + j.daily.apparent_temperature_min[i] * 0.35) * 10) / 10,
+      high: j.daily.temperature_2m_max[i], low: j.daily.temperature_2m_min[i],
+      humidity: h.length ? Math.round(h.reduce((a, b) => a + b, 0) / h.length) : null,
+      wind: j.daily.wind_speed_10m_max[i], rainChance: rain,
+      code: j.daily.weather_code[i], summary: describeCode(j.daily.weather_code[i]),
+      label: new Date((realDates[i] || d) + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }),
+    };
+  });
+}
