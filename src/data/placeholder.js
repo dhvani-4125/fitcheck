@@ -1,0 +1,2 @@
+// Neutral placeholder shown when a garment photo can't load. Inline SVG: no external image.
+export const PLACEHOLDER = `data:image/svg+xml;utf8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400"><rect width="300" height="400" fill="#e6ebdf"/><path d="M110 120l40-20 40 20 30 30-25 25-15-12v137h-60V163l-15 12-25-25z" fill="none" stroke="#8a9a78" stroke-width="4" stroke-linejoin="round"/></svg>')}`;
