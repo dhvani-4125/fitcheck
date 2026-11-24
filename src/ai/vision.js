@@ -343,7 +343,10 @@ export async function analyzePhoto(source, { filename = '', existingItems = [] }
   const rowOf = (b) => Math.floor(((b.y0 + b.y1) / 2) / rowH);
   boxes.sort((a, b) => rowOf(a) - rowOf(b) || a.x0 - b.x0);
 
-  const fullMask = boxes[0] === fullBox ? { ...mask, grid: new Uint8Array(total).fill(1) } : mask;
+  // whole-photo item (e.g. a person in a room): read colours from a centre oval, where the garment is, not the background
+  const centreGrid = new Uint8Array(total);
+  for (let y = 0; y < mask.gh; y++) for (let x = 0; x < mask.gw; x++) { const dx = (x - mask.gw / 2) / (mask.gw * 0.3), dy = (y - mask.gh * 0.55) / (mask.gh * 0.38); if (dx * dx + dy * dy <= 1) centreGrid[y * mask.gw + x] = 1; }
+  const fullMask = boxes[0] === fullBox ? { ...mask, grid: centreGrid } : mask;
   const detections = boxes.slice(0, 24).map((box, index) => {
     const { dataUrl, canvas } = cropToDataUrl(img, scale, box);
     const region = analyseRegion(data, w, h, box, box === fullBox ? fullMask : mask);

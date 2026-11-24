@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { analyzePhoto } from '../ai/vision.js';
-import { embedImage, classifyEmbedding, findSimilar, loadMemory, onClipStatus } from '../ai/clip.js';
+import { embedImage, classifyEmbedding, classifyColors, findSimilar, loadMemory, onClipStatus } from '../ai/clip.js';
 import { SLOTS, SLOT_LABELS, SUBCATEGORIES, PATTERNS, SLOT_GROUPS } from '../ai/attributes.js';
 import { NAMED_COLORS, hexForName } from '../ai/colors.js';
+const NAMED_HEX = Object.fromEntries(NAMED_COLORS);
 import { PageHeading, Swatches } from './shared.jsx';
 
 const COLLECTIONS = ['Basics', 'Athleisure', 'Glam / Party', 'The Event Edit'];
@@ -35,6 +36,7 @@ export default function UploadStudio({ items, onSave, notify, audience }) {
           const next = { ...x, emb: e, aiAlternatives: r.alternatives, reason: r.reason, confidence: r.confidence };
           if (!x.touched?.slot) { next.slot = r.slot; next.subcategory = r.subcategory; }
           if (!x.touched?.pattern && r.pattern) next.pattern = r.pattern;
+          if (!x.touched?.colors) next.colors = classifyColors(e, x.colors, NAMED_HEX);
           if (!x.touched?.name) next.name = defaultName(next);
           if (!x.duplicateOf && twin) { const it = items.find(i => i.id === twin.id); next.duplicateOf = { id: twin.id, name: it?.name || 'a saved piece', distance: 0 }; next.include = false; }
           if (!x.touched?.collection) next.collection = next.slot === 'dress' && !['Lehenga', 'Saree', 'Sherwani', 'Anarkali', 'Kurta set', 'Sharara set'].includes(next.subcategory) ? 'Glam / Party' : ['Lehenga', 'Saree', 'Sherwani'].includes(next.subcategory) ? 'The Event Edit' : next.aesthetics?.includes?.('Sporty') ? 'Athleisure' : x.collection;

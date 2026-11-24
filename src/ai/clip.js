@@ -4,6 +4,7 @@
 // - It learns from you: every piece you confirm or correct is remembered, and new uploads that
 //   look like a remembered piece get that piece's category.
 let LABELS = null; // loaded with the model, so it doesn't weigh down page load
+let COLORS = null;
 
 let modelPromise = null;
 let status = 'idle';
@@ -19,6 +20,7 @@ function loadModel() {
       const { AutoProcessor, CLIPVisionModelWithProjection, RawImage, env } = await import('@huggingface/transformers');
       env.allowLocalModels = false;
       LABELS = (await import('./clipLabels.json')).default;
+      COLORS = (await import('./clipColors.json')).default;
       const files = {};
       const onProgress = (p) => {
         if (p.status === 'progress' && p.file) {
@@ -58,7 +60,10 @@ function softmaxTop(scored) {
  * Returns { slot, subcategory, pattern, confidence, reason, alternatives }.
  */
 export function classifyEmbedding(e, memory = []) {
-  const cats = softmaxTop(LABELS.categories.map(c => ({ slot: c.slot, sub: c.sub, s: dot(c.e, e) * 100 })));
+  // categories: classifier head trained on real Indian + western clothing photos (scripts/train),
+  // falling back to plain zero-shot text embeddings if no trained head is present
+  const scale = LABELS.scale || 100;
+  const cats = softmaxTop(LABELS.categories.map(c => ({ slot: c.slot, sub: c.sub, s: dot(c.e, e) * scale + (c.b || 0) })));
   const pats = softmaxTop(LABELS.patterns.map(c => ({ pattern: c.pattern, s: dot(c.e, e) * 100 })));
   // personal memory: nearest pieces you've already labelled
   const near = memory.map(m => ({ ...m, sim: dot(m.e, e) })).sort((a, b) => b.sim - a.sim).slice(0, 5);
@@ -71,10 +76,28 @@ export function classifyEmbedding(e, memory = []) {
   const top = blended[0];
   const learned = votes[`${top.slot}|${top.sub}`];
   return {
-    slot: top.slot, subcategory: top.sub, pattern: pats[0].p > 0.45 ? pats[0].pattern : null,
+    slot: top.slot, subcategory: top.sub, pattern: pats[0].p > 0.3 ? pats[0].pattern : null,
     confidence: Math.min(0.99, top.p), reason: learned ? 'AI + what you taught it' : 'AI recognition',
     alternatives: blended.slice(1, 3).map(a => `${a.sub}`),
   };
+}
+
+/**
+ * Garment colour: FashionCLIP's reading of the clothing ("a white shirt") blended with the pixel
+ * colours from the centre of the photo, so neither a dark room nor a coloured backdrop wins.
+ * pixelColors: [{ name, hex, share }] from vision.js. Returns up to two [{ name, hex, share }].
+ */
+export function classifyColors(e, pixelColors = [], namedHex = {}) {
+  if (!COLORS) return pixelColors;
+  const ai = softmaxTop(COLORS.colors.map(c => ({ name: c.name, s: dot(c.e, e) * 100 })));
+  const score = {};
+  ai.forEach(c => { score[c.name] = (score[c.name] || 0) + 0.6 * c.p; });
+  pixelColors.forEach(c => { score[c.name] = (score[c.name] || 0) + 0.4 * (c.share || 0); });
+  const ranked = Object.entries(score).sort((a, b) => b[1] - a[1]);
+  const pick = ([name, s]) => ({ name, hex: pixelColors.find(c => c.name === name)?.hex || namedHex[name] || '#888888', share: Math.round(s * 100) / 100 });
+  const out = [pick(ranked[0])];
+  if (ranked[1] && ranked[1][1] >= 0.2) out.push(pick(ranked[1]));
+  return out;
 }
 
 export function findSimilar(e, memory = [], threshold = 0.95) {
