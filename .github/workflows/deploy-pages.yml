@@ -26,7 +26,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts  # skip native downloads (onnxruntime-node); the site only needs the browser build
       - run: npm test
       - run: npm run build
         env:
