@@ -61,10 +61,15 @@ function softmaxTop(scored) {
  */
 export function classifyEmbedding(e, memory = []) {
   // categories: classifier head trained on real Indian + western clothing photos (scripts/train),
-  // falling back to plain zero-shot text embeddings if no trained head is present
+  // blended with zero-shot FashionCLIP for robustness on unusual photos (blend tuned for precision)
   const scale = LABELS.scale || 100;
-  const cats = softmaxTop(LABELS.categories.map(c => ({ slot: c.slot, sub: c.sub, s: dot(c.e, e) * scale + (c.b || 0) })));
-  const pats = softmaxTop(LABELS.patterns.map(c => ({ pattern: c.pattern, s: dot(c.e, e) * 100 })));
+  const trained = softmaxTop(LABELS.categories.map(c => ({ slot: c.slot, sub: c.sub, s: dot(c.e, e) * scale + (c.b || 0) })));
+  let cats = trained;
+  if (LABELS.zeroShot && LABELS.blend != null && LABELS.blend < 1) {
+    const zs = Object.fromEntries(softmaxTop(LABELS.zeroShot.map(c => ({ k: `${c.slot}|${c.sub}`, s: dot(c.e, e) * 100 }))).map(x => [x.k, x.p]));
+    cats = trained.map(c => ({ ...c, p: LABELS.blend * c.p + (1 - LABELS.blend) * (zs[`${c.slot}|${c.sub}`] || 0) })).sort((a, b) => b.p - a.p);
+  }
+  const pats = softmaxTop(LABELS.patterns.map(c => ({ pattern: c.pattern, s: dot(c.e, e) * 100 + (c.b || 0) })));
   // personal memory: nearest pieces you've already labelled
   const near = memory.map(m => ({ ...m, sim: dot(m.e, e) })).sort((a, b) => b.sim - a.sim).slice(0, 5);
   if (near[0] && near[0].sim >= 0.9) {
@@ -76,7 +81,8 @@ export function classifyEmbedding(e, memory = []) {
   const top = blended[0];
   const learned = votes[`${top.slot}|${top.sub}`];
   return {
-    slot: top.slot, subcategory: top.sub, pattern: pats[0].p > 0.3 ? pats[0].pattern : null,
+    // most wardrobe pieces are plain: only call a pattern when the model is fairly sure
+    slot: top.slot, subcategory: top.sub, pattern: pickPattern(pats),
     confidence: Math.min(0.99, top.p), reason: learned ? 'AI + what you taught it' : 'AI recognition',
     alternatives: blended.slice(1, 3).map(a => `${a.sub}`),
   };
@@ -87,17 +93,40 @@ export function classifyEmbedding(e, memory = []) {
  * colours from the centre of the photo, so neither a dark room nor a coloured backdrop wins.
  * pixelColors: [{ name, hex, share }] from vision.js. Returns up to two [{ name, hex, share }].
  */
-export function classifyColors(e, pixelColors = [], namedHex = {}) {
+export function classifyColors(e, pixelColors = [], namedHex = {}, pattern = 'Solid', cleanCutout = false) {
   if (!COLORS) return pixelColors;
-  const ai = softmaxTop(COLORS.colors.map(c => ({ name: c.name, s: dot(c.e, e) * 100 })));
+  // colour head trained on labelled Indian + western clothing photos (scripts/train/attrs.mjs);
+  // pixelWeight is the share given to garment pixels, tuned on held-out photos
+  const ai = softmaxTop(COLORS.colors.map(c => ({ name: c.name, s: dot(c.e, e) * (COLORS.scale || 100) + (c.b || 0) })));
+  const pw = COLORS.pixelWeight ?? 0.4;
   const score = {};
-  ai.forEach(c => { score[c.name] = (score[c.name] || 0) + 0.6 * c.p; });
-  pixelColors.forEach(c => { score[c.name] = (score[c.name] || 0) + 0.4 * (c.share || 0); });
+  ai.forEach(c => { score[c.name] = (score[c.name] || 0) + (1 - pw) * c.p; });
+  pixelColors.forEach(c => { score[c.name] = (score[c.name] || 0) + pw * (c.share || 0); });
   const ranked = Object.entries(score).sort((a, b) => b[1] - a[1]);
   const pick = ([name, s]) => ({ name, hex: pixelColors.find(c => c.name === name)?.hex || namedHex[name] || '#888888', share: Math.round(s * 100) / 100 });
   const out = [pick(ranked[0])];
-  if (ranked[1] && ranked[1][1] >= 0.2) out.push(pick(ranked[1]));
+  // Second colour: the garment's own pixels know "the other colour in the stripes" best.
+  const primaryGroup = COLOUR_GROUP[ranked[0][0]];
+  // Only trusted when the garment was cut out cleanly; in a photo of a person in a room the "pixels"
+  // include jeans, hair and shadows. Precision first: no second colour beats a wrong one.
+  const fromPixels = cleanCutout && pixelColors.find(c => COLOUR_GROUP[c.name] !== primaryGroup && (c.share || 0) >= (pattern !== 'Solid' ? 0.15 : 0.3));
+  if (fromPixels) out.push({ name: fromPixels.name, hex: fromPixels.hex || namedHex[fromPixels.name] || '#888888', share: Math.round(fromPixels.share * 100) / 100 });
+  else {
+    const alt = ai.find(c => COLOUR_GROUP[c.name] !== primaryGroup);
+    const dark = alt && COLOUR_GROUP[alt.name] === 'black';
+    if (alt && pattern !== 'Solid' && alt.p >= (dark ? 0.4 : 0.2)) out.push({ name: alt.name, hex: namedHex[alt.name] || '#888888', share: Math.round(alt.p * 100) / 100 });
+  }
   return out;
+}
+
+// colours a person would call "the same" (white/ivory/cream, navy/blue/denim…)
+const COLOUR_GROUP = { White: 'white', Ivory: 'white', Cream: 'white', Black: 'black', Charcoal: 'black', Grey: 'grey', Silver: 'grey', Beige: 'beige', Camel: 'beige', Tan: 'beige', Khaki: 'beige', Brown: 'brown', Coffee: 'brown', Navy: 'blue', Blue: 'blue', Denim: 'blue', 'Light blue': 'blue', Teal: 'teal', Green: 'green', Olive: 'green', Sage: 'green', Yellow: 'yellow', Mustard: 'yellow', Gold: 'yellow', Orange: 'orange', Rust: 'orange', Red: 'red', Burgundy: 'wine', Wine: 'wine', Pink: 'pink', Blush: 'pink', Lilac: 'purple', Purple: 'purple' };
+
+function pickPattern(pats) {
+  const top = pats[0];
+  const solid = pats.find(p => p.pattern === 'Solid');
+  if (top.pattern !== 'Solid' && top.p < 0.55 && solid && solid.p >= 0.15) return 'Solid';
+  return top.p > 0.3 ? top.pattern : 'Solid';
 }
 
 export function findSimilar(e, memory = [], threshold = 0.95) {

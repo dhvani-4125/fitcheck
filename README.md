@@ -124,3 +124,36 @@ The anon key is designed to be public. Data is protected by the row-level-securi
 | Style this piece | Wardrobe → **✦ Style it** | Three ways to wear any item, for any occasion or destination |
 | Complete the look | Every outfit | One suggested piece to buy, with search links to Myntra, AJIO, Nykaa Fashion and Amazon |
 | Ask Friends | **Ask Friends** / "💬 Ask friends" on any look | 2–4 options become a numbered image to share on WhatsApp. With accounts on, it also creates a voting link: friends vote without signing up and you see results live (run the latest `supabase/schema.sql` to add the poll tables) |
+
+## Clothing recognition model
+
+Upload uses **FashionCLIP** (`Marqo/marqo-fashionCLIP`, run in the browser via transformers.js) with a classifier head **trained on real Indian and western clothing photos** from two free, MIT-licensed datasets:
+
+- [Marqo/atlas](https://huggingface.co/datasets/Marqo/atlas): Indian e-commerce (sarees, lehengas, kurta sets, kurtis, kurtas, palazzos, dhoti/patiala, sherwanis, western wear)
+- [Marqo/KAGL](https://huggingface.co/datasets/Marqo/KAGL): Myntra catalogue (shoes, bags, watches, jewellery, dupattas, western wear)
+
+Each training photo also gets a **synthetic "wardrobe photo" version**: the studio background is swapped for a bedsheet or floor colour, and the image is rotated, re-cropped and given phone-camera lighting and blur, so the model works on real user photos and not just catalogue shots. The trained head is blended 60/40 with zero-shot FashionCLIP, which keeps it robust on unusual photos.
+
+Held-out test set of 1,834 photos the model never saw:
+
+| | Before (zero-shot) | After (trained + blend) |
+|---|---|---|
+| Accuracy | 65.0% | **84.2%** |
+| Macro precision | 64.4% | **76.1%** |
+| Wardrobe-style photos | 62.6% | **82.1%** |
+| Right item type (top/bottom/shoes…) | 88.9% | **95%+** |
+| Precision when ≥85% confident | n/a | **97.2%** |
+
+**Colour and pattern** use heads trained the same way, with labels taken from the product titles ("Navy Blue Striped Shirt", "Solid… in Maroon"):
+
+| Held-out photos | Before | After |
+|---|---|---|
+| Colour, exact (old pixel counting) | 25.1% | |
+| Colour, exact (AI) | 58.0% | **67.6%** |
+| Colour, right colour family | 68.2% | **71.1%** |
+| Pattern accuracy | 64.9% | **78.2%** |
+| Pattern precision | 63.8% | **77.2%** |
+
+Many of the remaining colour "errors" are wrong product titles (e.g. "brown" trousers that are black) or catalogue shots of a model wearing several garments. Before reading colour, the app corrects photos with a colour cast (warm room light, purple-ish phone shots). A second colour is only shown when it's reliable: taken from the garment's own pixels when it was cut out cleanly, otherwise only when the AI is confident. Pattern defaults to Solid unless the model is fairly sure. The app also learns from each user's corrections on their own device.
+
+Retrain: `node scripts/train/fetch.mjs <dir>`, then `node scripts/train/embed.mjs <dir>`, `node scripts/train/train.mjs <dir> --write`, `node scripts/train/blend.mjs <dir> --write` and `node scripts/train/attrs.mjs <dir> --write`.

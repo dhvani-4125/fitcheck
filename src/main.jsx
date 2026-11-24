@@ -294,4 +294,5 @@ const CSS = `
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('FitCheck could not find the root element. Check that index.html contains <div id="root"></div>.');
 const pollId = new URLSearchParams(window.location.search).get('poll');
-createRoot(rootElement).render(<SafeBoundary>{pollId ? <PollView id={pollId} /> : <App />}</SafeBoundary>);
+// reuse the root across dev hot-reloads (avoids a duplicate createRoot warning)
+(window.__fitcheckRoot ||= createRoot(rootElement)).render(<SafeBoundary>{pollId ? <PollView id={pollId} /> : <App />}</SafeBoundary>);

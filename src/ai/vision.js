@@ -284,7 +284,29 @@ export function findDuplicate(hash, items, maxDistance = 7) {
   return best;
 }
 
-function cropToDataUrl(img, scale, box, maxEdge = 520) {
+// Colour-cast correction ("white patch"): if the photo's brightest areas are tinted (warm room light,
+// purple phone shots, old prints), scale the channels so they read neutral. Only for mild casts on
+// photos that actually have bright highlights, so a saturated red saree is never "corrected".
+export function whiteBalanceGains(data) {
+  const hist = [new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)];
+  let n = 0;
+  for (let i = 0; i < data.length; i += 16) { hist[0][data[i]]++; hist[1][data[i + 1]]++; hist[2][data[i + 2]]++; n++; }
+  const p99 = hist.map(h => { let acc = 0; for (let v = 255; v >= 0; v--) { acc += h[v]; if (acc >= n * 0.01) return Math.max(1, v); } return 255; });
+  if (Math.min(...p99) < 170) return null;
+  const top = Math.max(...p99);
+  const gains = p99.map(v => top / v);
+  if (Math.max(...gains) < 1.05 || Math.max(...gains) > 1.35) return null;
+  return gains;
+}
+export function applyGains(data, gains) {
+  if (!gains) return data;
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = Math.min(255, data[i] * gains[0]); data[i + 1] = Math.min(255, data[i + 1] * gains[1]); data[i + 2] = Math.min(255, data[i + 2] * gains[2]);
+  }
+  return data;
+}
+
+function cropToDataUrl(img, scale, box, maxEdge = 520, gains = null) {
   const padX = (box.x1 - box.x0 + 1) * CELL * 0.06, padY = (box.y1 - box.y0 + 1) * CELL * 0.06;
   const sx = Math.max(0, (box.x0 * CELL - padX) / scale);
   const sy = Math.max(0, (box.y0 * CELL - padY) / scale);
@@ -292,7 +314,9 @@ function cropToDataUrl(img, scale, box, maxEdge = 520) {
   const sh = Math.min(img.naturalHeight - sy, ((box.y1 - box.y0 + 1) * CELL + padY * 2) / scale);
   const k = Math.min(1, maxEdge / Math.max(sw, sh));
   const c = canvasFor(sw * k, sh * k);
-  c.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  const cctx = c.getContext('2d');
+  cctx.drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  if (gains) { const id = cctx.getImageData(0, 0, c.width, c.height); applyGains(id.data, gains); cctx.putImageData(id, 0, 0); }
   return { dataUrl: c.toDataURL('image/jpeg', 0.84), canvas: c };
 }
 
@@ -310,6 +334,8 @@ export async function analyzePhoto(source, { filename = '', existingItems = [] }
   const ctx = work.getContext('2d', { willReadFrequently: true });
   ctx.drawImage(img, 0, 0, w, h);
   const { data } = ctx.getImageData(0, 0, w, h);
+  const gains = whiteBalanceGains(data);
+  applyGains(data, gains);
 
   const { bg, spread } = estimateBackground(data, w, h);
   const busyBackdrop = spread > 70;
@@ -348,7 +374,7 @@ export async function analyzePhoto(source, { filename = '', existingItems = [] }
   for (let y = 0; y < mask.gh; y++) for (let x = 0; x < mask.gw; x++) { const dx = (x - mask.gw / 2) / (mask.gw * 0.3), dy = (y - mask.gh * 0.55) / (mask.gh * 0.38); if (dx * dx + dy * dy <= 1) centreGrid[y * mask.gw + x] = 1; }
   const fullMask = boxes[0] === fullBox ? { ...mask, grid: centreGrid } : mask;
   const detections = boxes.slice(0, 24).map((box, index) => {
-    const { dataUrl, canvas } = cropToDataUrl(img, scale, box);
+    const { dataUrl, canvas } = cropToDataUrl(img, scale, box, 520, gains);
     const region = analyseRegion(data, w, h, box, box === fullBox ? fullMask : mask);
     const guess = guessSlot(box, mask.gw, mask.gh, name);
     const hash = dHash(canvas);
@@ -363,6 +389,8 @@ export async function analyzePhoto(source, { filename = '', existingItems = [] }
       reason: guess.reason,
       hash,
       duplicateOf: findDuplicate(hash, existingItems),
+      // true when the garment was cut out from a plain backdrop, so its pixels are the garment's own
+      cleanCutout: box !== fullBox && !busyBackdrop,
     };
   });
   // flag duplicates within the same batch too
